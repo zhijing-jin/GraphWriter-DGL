@@ -81,6 +81,8 @@ def download():
             'python data/ablation/full_agenda.py '
         os.system(cmd)
 
+    if not os.path.isfile('data/webnlg_sent/train.json'):
+        os.system('python data/webnlg_sent/reader.py')
 
     files = [('eval/detokenizer.perl',
               'https://raw.githubusercontent.com/moses-smt/mosesdecoder/master/scripts/tokenizer/detokenizer.perl'),
@@ -88,7 +90,7 @@ def download():
               'https://raw.githubusercontent.com/moses-smt/mosesdecoder/master/scripts/generic/multi-bleu-detok.perl')]
     if not os.path.isfile(files[0][0]):
         os.system('mkdir eval')
-        for fname, url in files:
-            if not os.path.isfile(fname):
-                os.system('curl -o {fname} {url}'.format(fname=fname, url=url))
+    for fname, url in files:
+        if not os.path.isfile(fname):
+            os.system('curl -o {fname} {url}'.format(fname=fname, url=url))
 

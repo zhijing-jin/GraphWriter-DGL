@@ -109,46 +109,51 @@ def at_least(x):
     else:
         return x
 
+def get_graph(ent_len, rel_len, adj_edges):
+    graph = dgl.DGLGraph()
+
+    graph.add_nodes(ent_len,
+                    {'type': torch.ones(ent_len) * NODE_TYPE['entity']})
+    graph.add_nodes(1, {'type': torch.ones(1) * NODE_TYPE['root']})
+    graph.add_nodes(rel_len * 2,
+                    {'type': torch.ones(rel_len * 2) * NODE_TYPE['relation']})
+    graph.add_edges(ent_len, torch.arange(ent_len))
+    graph.add_edges(torch.arange(ent_len), ent_len)
+    graph.add_edges(torch.arange(ent_len + 1 + rel_len * 2),
+                    torch.arange(ent_len + 1 + rel_len * 2))
+
+    if len(adj_edges) > 0:
+        graph.add_edges(*list(map(list, zip(*adj_edges))))
+    return graph
+
 class Example(object):
-    def __init__(self, title, ent_text, ent_type, rel, text):
-        # one object corresponds to a data sample
-        self.raw_title = title.split()
-        self.raw_ent_text = [at_least(x.split()) for x in ent_text]
-        assert min([len(x) for x in self.raw_ent_text])>0, str(self.raw_ent_text)
-        self.raw_ent_type = ent_type.split() # <method> .. <>
-        self.raw_rel = [] 
-        for r in rel:
-            rel_list = r.split()
-            for i in range(len(rel_list)):
-                if i>0 and i<len(rel_list)-1 and rel_list[i-1]=='--' and rel_list[i]!=rel_list[i].lower() and rel_list[i+1]=='--':
-                    self.raw_rel.append([rel_list[:i-1], rel_list[i-1]+rel_list[i]+rel_list[i+1], rel_list[i+2:]])
-                    break
-        self.raw_text = text.split() 
-        self.graph = self.build_graph()
+    def __init__(self):
+        self.raw_title = None
+        self.raw_ent_text = None
+        self.raw_ent_type = None
+        self.raw_triples = None
+        self.raw_text = None
+        self.raw_t2g_text = None
+        self.t2g_combinations = None
+        self.graph = None
+        self.id = None
+        self.mode = None
 
     def __str__(self):
-        return '\n'.join([str(k)+':\t'+str(v) for k, v in self.__dict__.items()])
+        return '\n'.join(
+            [str(k) + ':\t' + str(v) for k, v in self.__dict__.items()])
 
     def __len__(self):
         return len(self.raw_text)
 
-    @staticmethod
-    def from_json(json_data):
-        return Example(json_data['title'], json_data['entities'], json_data['types'], json_data['relations'], json_data['abstract'])
-
     def build_graph(self):
-        graph = dgl.DGLGraph()
         ent_len = len(self.raw_ent_text)
-        rel_len = len(self.raw_rel) # treat the repeated relation as different nodes, refer to the author's code
+        raw_rel = [x[1] for x in self.raw_triples]
+        rel_set = sorted(list(set(raw_rel)))
+        rel_len = len(raw_rel) # treat the repeated relation as different nodes, refer to the author's code
 
-        graph.add_nodes(ent_len, {'type': torch.ones(ent_len) * NODE_TYPE['entity']})
-        graph.add_nodes(1, {'type': torch.ones(1) * NODE_TYPE['root']})
-        graph.add_nodes(rel_len*2, {'type': torch.ones(rel_len*2) * NODE_TYPE['relation']})
-        graph.add_edges(ent_len, torch.arange(ent_len))
-        graph.add_edges(torch.arange(ent_len), ent_len)
-        graph.add_edges(torch.arange(ent_len+1+rel_len*2), torch.arange(ent_len+1+rel_len*2))
         adj_edges = []
-        for i, r in enumerate(self.raw_rel):
+        for i, r in enumerate(self.raw_triples):
             assert len(r)==3, str(r)
             st, rt, ed = r
             st_ent, ed_ent = self.raw_ent_text.index(st), self.raw_ent_text.index(ed)
@@ -158,8 +163,7 @@ class Example(object):
             adj_edges.append([ent_len+1+2*i+1, ed_ent])
             adj_edges.append([st_ent, ent_len+1+2*i+1])
 
-        if len(adj_edges)>0:
-            graph.add_edges(*list(map(list, zip(*adj_edges))))
+        graph = get_graph(ent_len, rel_len, adj_edges)
         return graph
 
     def get_tensor(self, ent_vocab, rel_vocab, text_vocab, ent_text_vocab, title_vocab):
@@ -170,7 +174,7 @@ class Example(object):
             title = [title_vocab(x) for x in title_data]
             ent_text = [[ent_text_vocab(y) for y in x] for x in self.raw_ent_text]
             ent_type = [text_vocab(x) for x in self.raw_ent_type] # for inference
-            rel_data = ['--root--'] + sum([[x[1],x[1]+'_INV'] for x in self.raw_rel], [])
+            rel_data = ['--root--'] + sum([[x[1],x[1]+'_INV'] for x in self.raw_triples], [])
             rel = [rel_vocab(x) for x in rel_data]
 
             text_data = ['<BOS>'] + self.raw_text + ['<EOS>']
@@ -193,9 +197,66 @@ class Example(object):
         ent_vocab.update(self.raw_ent_type)
         ent_text_vocab.update(self.raw_ent_text)
         title_vocab.update(self.raw_title)
-        rel_vocab.update(['--root--']+[x[1] for x in self.raw_rel]+[x[1]+'_INV' for x in self.raw_rel])
+        rel_vocab.update(['--root--']+[x[1] for x in self.raw_triples]+[x[1]+'_INV' for x in self.raw_triples])
         text_vocab.update(self.raw_ent_type)
         text_vocab.update(self.raw_text)
+
+
+class AgendaExample(Example):
+    def __init__(self, title, ent_text, ent_type, rel, text):
+        # one object corresponds to a data sample
+        super().__init__()
+        self.raw_title = title.split()
+        self.raw_ent_text = [at_least(x.split()) for x in ent_text]
+        assert min([len(x) for x in self.raw_ent_text])>0, str(self.raw_ent_text)
+        self.raw_ent_type = ent_type.split() # <method> .. <>
+        self.raw_triples = []
+        for r in rel:
+            rel_list = r.split()
+            for i in range(len(rel_list)):
+                if i>0 and i<len(rel_list)-1 and rel_list[i-1]=='--' and rel_list[i]!=rel_list[i].lower() and rel_list[i+1]=='--':
+                    self.raw_triples.append([rel_list[:i-1], rel_list[i-1]+rel_list[i]+rel_list[i+1], rel_list[i+2:]])
+                    break
+        self.raw_text = text.split()
+        self.graph = self.build_graph()
+
+    @staticmethod
+    def from_json(json_data):
+        return AgendaExample(json_data['title'], json_data['entities'], json_data['types'],
+                json_data['relations'], json_data['abstract'])
+
+class WebNLGExample(Example):
+    def __init__(self, ner2ent, triples, text):
+        super().__init__()
+
+        self.raw_title = []
+        sorted_ner2ent = sorted(ner2ent.items())
+        ners, ents = zip(*sorted_ner2ent)
+        self.raw_ent_text = [x.split() for x in ents]
+        assert min([len(x) for x in self.raw_ent_text]) > 0, str(
+            self.raw_ent_text)
+        self.raw_ent_type = ['<' + x.split('_')[0] + '>' for x in ners]
+        self.raw_triples = [[st.split(), r, ed.split()] for st, r, ed in
+                            triples]
+        self.raw_text = []
+        self.raw_t2g_text = []
+        for x in text.split():
+            if x in ner2ent:
+                ner = x.split('_')[0]
+                ix = ners.index(x)
+                tok = '<{}_{}>'.format(ner, ix)
+                self.raw_text.append(tok)
+                self.raw_t2g_text.extend(self.raw_ent_text[ix])
+            else:
+                self.raw_text.append(x)
+                self.raw_t2g_text.append(x)
+        self.graph = self.build_graph()
+
+    @staticmethod
+    def from_json(json_data):
+        return WebNLGExample(json_data['ner2ent'],
+                             json_data['triples'],
+                             json_data['target'])
 
 class BucketSampler(torch.utils.data.Sampler):
     def __init__(self, data_source, batch_size=32, bucket=3):
@@ -287,12 +348,16 @@ def get_datasets(fnames, min_freq=-1, sep=';', joint_vocab=True, device=None, sa
     text_vocab = Vocab(min_freq=5)
     ent_text_vocab = Vocab(sp=['<PAD>', '<UNK>'])
     datasets = []
+    if 'webnlg' in fnames[0]:
+        example_class = WebNLGExample
+    else:
+        example_class = AgendaExample
     for fname in fnames:
         exs = []
         json_datas = json.loads(open(fname).read())
         for json_data in json_datas:
             # construct one data example
-            ex = Example.from_json(json_data)
+            ex = example_class.from_json(json_data)
             if fname == fnames[0]: # only training set
                 ex.update_vocab(ent_vocab, rel_vocab, text_vocab, ent_text_vocab, title_vocab)
             exs.append(ex)
