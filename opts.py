@@ -84,6 +84,9 @@ def download():
     if not os.path.isfile('data/webnlg_sent/train.json'):
         os.system('python data/webnlg_sent/reader.py')
 
+    if not os.path.isfile('data/webnlg_doc/train.json'):
+        os.system('python data/webnlg_doc/reader.py')
+
     files = [('eval/detokenizer.perl',
               'https://raw.githubusercontent.com/moses-smt/mosesdecoder/master/scripts/tokenizer/detokenizer.perl'),
              ('eval/multi-bleu-detok.perl',
