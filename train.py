@@ -11,7 +11,6 @@ from opts import *
 import os
 import sys
 
-sys.path.append('./pycocoevalcap')
 from pycocoevalcap.bleu.bleu import Bleu
 from pycocoevalcap.rouge.rouge import Rouge
 from pycocoevalcap.meteor.meteor import Meteor
@@ -102,7 +101,6 @@ def main(args):
                     shuffle=False, collate_fn=train_dataset.batch_fn)
 
     model = GraphWriter(args)
-    print(model)
     model.to(args.device)
     if args.test:
         model = torch.load(args.save_model)
