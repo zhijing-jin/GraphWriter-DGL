@@ -2,21 +2,29 @@ import json
 from itertools import permutations
 from efficiency.log import fwrite
 
-REL = ' -- RELATION -- '
-src_f_templ = 'data/agenda/{}.json'
-tgt_f_templ = 'data/agenda/full_{}.json'
+rel_placeholder = ' -- RELATION -- '
 splits = 'train valid test'.split()
+file_templ = 'data/agenda/{}.json'
 for split in splits:
-    src_f = src_f_templ.format(split)
-    tgt_f = tgt_f_templ.format(split)
-    with open(src_f) as f:
+    f_in = file_templ.format(split)
+    f_emp = file_templ.format(split+'_empty')
+    f_full = file_templ.format(split+'_full')
+    with open(f_in) as f:
         data = json.load(f)
-    for line in data:
-        entities = line['entities']
-        combinations = list(permutations(entities, 2))
-        line['relations']=[e0 + REL + e1 for e0, e1 in combinations]
 
-    print('[Info] Saving {} data from {} to {}'.format(len(data), src_f, tgt_f))
+    data_empty = [{k: v if k != 'relations' else [] for k, v in item.items()}
+                  for item in data]
 
-    fwrite(json.dumps(data, indent=4), tgt_f)
+    data_full = [{k: v for k, v in item.items() if k != 'relations'}
+                 for item in data]
+    for item, item_full in zip(data, data_full):
+        entities = item['entities']
+        entities = [e for e in entities if e]
+        comb = list(permutations(entities, 2))
+        item_full['relations'] = [rel_placeholder.join(c) for c in comb]
 
+    data_empty[0]
+    data_full[0]
+
+    fwrite(json.dumps(data_empty, indent=4), f_emp)
+    fwrite(json.dumps(data_full, indent=4), f_full)

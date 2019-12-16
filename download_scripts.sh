@@ -7,4 +7,5 @@ wget https://raw.githubusercontent.com/QipengGuo/GraphWriter-DGL/reproduce/test.
 wget https://raw.githubusercontent.com/QipengGuo/GraphWriter-DGL/reproduce/utlis.py
 
 
-
+pip install --upgrade dgl-cu100
+pip install efficiency
