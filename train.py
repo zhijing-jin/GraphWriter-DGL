@@ -21,6 +21,7 @@ def train_one_epoch(model, dataloader, optimizer, args, epoch):
     tcnt = 0.
     st_time = time.time()
     with tqdm(dataloader, desc='Train Ep '+str(epoch), mininterval=60) as tq:
+        batch_i = 0
         for batch in tq:
             pred = model(batch)
             nll_loss = F.nll_loss(pred.view(-1, pred.shape[-1]), batch['tgt_text'].view(-1), ignore_index=0)
@@ -34,7 +35,9 @@ def train_one_epoch(model, dataloader, optimizer, args, epoch):
                 raise ValueError('NaN appear')
             tloss += loss * len(batch['tgt_text'])
             tcnt += len(batch['tgt_text'])
-            tq.set_postfix({'loss': tloss/tcnt}, refresh=False)
+            # tq.set_postfix('{:.6f}'.format(tloss/tcnt), refresh=False)
+            print('step{}:{:.6f}'.format(batch_i, tloss/tcnt))
+            batch_i += 1
     print('Train Ep ', str(epoch), 'AVG Loss ', tloss/tcnt, 'Steps ', tcnt, 'Time ', time.time()-st_time, 'GPU', torch.cuda.max_memory_cached()/1024.0/1024.0/1024.0)
     torch.save(model, args.save_model+str(epoch%100))
          
@@ -54,7 +57,7 @@ def eval_it(model, dataloader, args, epoch):
             loss = loss.item()
             tloss += loss * len(batch['tgt_text'])
             tcnt += len(batch['tgt_text'])
-            tq.set_postfix({'loss': tloss/tcnt}, refresh=False)
+            tq.set_postfix({'loss': '{:.6f}'.format(tloss/tcnt)}, refresh=False)
     print('Eval Ep ', str(epoch), 'AVG Loss ', tloss/tcnt, 'Steps ', tcnt, 'Time ', time.time()-st_time)
     if tloss/tcnt < val_loss:
         print('Saving best model ', 'Ep ', epoch, ' loss ', tloss/tcnt)

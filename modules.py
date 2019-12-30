@@ -116,12 +116,12 @@ class GAT(nn.Module):
         v = v.view(-1, self._num_heads, self._out_feats)
         graph.ndata.update({'ft': v, 'el': k, 'er': q}) # k,q instead of q,k, the edge_softmax is applied on incoming edges
         # compute edge attention
-        graph.apply_edges(fn.u_dot_v('el', 'er', 'e'))
+        graph.apply_edges(fn_u_dot_v('el', 'er', 'e'))
         e =  graph.edata.pop('e') / math.sqrt(self._out_feats * self._num_heads)
         graph.edata['a'] = edge_softmax(graph, e).unsqueeze(-1)
        # message passing
-        graph.update_all(fn.u_mul_e('ft', 'a', 'm'),
-                         fn.sum('m', 'ft2'))
+        graph.update_all(fn_u_mul_e('ft', 'a', 'm'),
+                         fn_sum('m', 'ft2'))
         rst = graph.ndata['ft2']
         # residual
         rst = rst.view(feat.shape) + feat
@@ -157,3 +157,19 @@ class GraphTrans(nn.Module):
         g_root = feats.index_select(0, graphs.filter_nodes(lambda x: x.data['type']==NODE_TYPE['root']).to(device))
         g_ent = pad(feats.index_select(0, graphs.filter_nodes(lambda x: x.data['type']==NODE_TYPE['entity']).to(device)).split(ent_len), out_type='tensor')
         return g_ent, g_root
+
+
+def fn_u_dot_v(n1,n2,n3):
+    def func(edge_batch):
+        return {n3: torch.matmul(edge_batch.src[n1].unsqueeze(-2), edge_batch.dst[n2].unsqueeze(-1)).squeeze(-1).squeeze(-1)}
+    return func
+
+def fn_u_mul_e(n1,n2,n3):
+    def func(edge_batch):
+        return {n3: edge_batch.src[n1] * edge_batch.data[n2]}
+    return func
+
+def fn_sum(n1, n2):
+    def func(node_batch):
+        return {n2: node_batch.mailbox[n1].sum(1)}
+    return func

@@ -8,6 +8,7 @@ def fill_config(args):
     args.dec_ninp = args.nhid * 3 if args.title else args.nhid * 2
     args.fnames = [args.train_file, args.valid_file, args.test_file]
 
+    from efficiency.function import set_seed; set_seed(args.seed)
     download()
     return args
 
@@ -39,6 +40,7 @@ def get_args():
                       help='max length of the generated text')
     args.add_argument('--enc_lstm_layers', default=2, type=int,
                       help='number of layers of lstm')
+    args.add_argument('--seed', default=0, type=float, help='seed')
     args.add_argument('--lr', default=1e-1, type=float, help='learning rate')
     # args.add_argument('--lr_decay', default=1e-8, type=float, help='')
     args.add_argument('--clip', default=1, type=float, help='gradient clip')
