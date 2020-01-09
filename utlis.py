@@ -370,29 +370,29 @@ class GWdataset(torch.utils.data.Dataset):
             'ent_type': batch_ent_type.to(self.device), 'rel': batch_rel.to(self.device), 'text': batch_text.to(self.device), \
             'tgt_text': batch_tgt_text.to(self.device), 'graph': batch_graph, 'raw_ent_text': batch_raw_ent_text}
 
-def get_one_dataset(fname, dataset_type, device, vocab_pack):
-    if dataset_type == 'webnlg':
-        example_class = WebNLGExample
+def get_one_dataset(file_content, dataset_type, device, vocab_pack):
     if dataset_type == 'agenda':
         example_class = AgendaExample
+    else: # for all other dataset_types, use WebNLGExample
+        example_class = WebNLGExample
     exs = []
-    json_datas = json.loads(open(fname).read())
+    json_datas = json.loads(file_content)
     for json_data in json_datas:
         # construct one data example
         ex = example_class.from_json(json_data)
         exs.append(ex)
     return GWdataset(exs, vocab_pack=vocab_pack, device=device)
 
-def get_vocab(fnames, no_save=True, min_freq=5, save='vocab.pickle'):
+def get_vocab(fnames, dataset_type='agenda', no_save=True, min_freq=5, save='vocab.pickle'):
     ent_vocab = Vocab(sp=['<PAD>', '<UNK>']) 
     title_vocab = Vocab(min_freq=min_freq) 
     rel_vocab = Vocab(sp=['<PAD>', '<UNK>'])
     text_vocab = Vocab(min_freq=min_freq)
     ent_text_vocab = Vocab(sp=['<PAD>', '<UNK>'])
-    if 'webnlg' in fnames[0]:
-        example_class = WebNLGExample
-    else:
+    if dataset_type == 'agenda':
         example_class = AgendaExample
+    else:
+        example_class = WebNLGExample
     for fname in fnames:
         json_datas = json.loads(open(fname).read())
         for json_data in json_datas:
@@ -420,10 +420,10 @@ def get_datasets(fnames, min_freq=-1, sep=';', joint_vocab=True, device=None, sa
     text_vocab = Vocab(min_freq=5)
     ent_text_vocab = Vocab(sp=['<PAD>', '<UNK>'])
     datasets = []
-    if 'webnlg' in fnames[0]:
-        example_class = WebNLGExample
-    else:
+    if 'agenda' in fnames[0]:
         example_class = AgendaExample
+    else:
+        example_class = WebNLGExample
     for fname in fnames:
         exs = []
         json_datas = json.loads(open(fname).read())
