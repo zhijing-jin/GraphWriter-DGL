@@ -30,7 +30,7 @@ def write_txt(batch, seqs, text_vocab):
                     txt.append(text_vocab(int(token)))
             if int(token) == text_vocab('<EOS>'):
                 break
-        ret.append([' '.join([str(x) for x in txt])])
+        ret.append(' '.join([str(x) for x in txt]))
     return ret 
 
 def _write_txt(batch, seqs, w_file, args):
