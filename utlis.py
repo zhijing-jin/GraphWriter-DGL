@@ -6,11 +6,11 @@ import json
 import pickle
 import random
 from collections import namedtuple
-config_type = namedtuple('Config', ['nhid', 'nhead', 'head_dim', 'weight_decay', 'prop', 'title', 'test', 'batch_size', 'beam_size', 'epoch', 'beam_max_len', 'enc_lstm_layers', 'seed', 'lr', 'clip', 'emb_drop', 'attn_drop', 'drop', 'lp', 'graph_enc', 'train_file', 'valid_file', 'test_file', 'save_dataset', 'save_model', 'gpu'])
+config_type = namedtuple('Config', ['nhid', 'nhead', 'head_dim', 'weight_decay', 'prop', 'title', 'test', 'batch_size', 'beam_size', 'epoch', 'beam_max_len', 'enc_lstm_layers', 'seed', 'lr', 'clip', 'emb_drop', 'attn_drop', 'drop', 'lp', 'graph_enc', 'train_file', 'valid_file', 'test_file', 'save_dataset', 'save_model', 'gpu', 'update_freq'])
 NODE_TYPE = {'entity': 0, 'root': 1, 'relation':2}
 
 def get_default_config():
-    config = config_type(nhid=500, nhead=4, head_dim=125, weight_decay=0.0, prop=2, title=True, test=False, batch_size=32, beam_size=1, epoch=20, beam_max_len=200, enc_lstm_layers=2, seed=0, lr=1e-1, clip=1.0, emb_drop=0.0, attn_drop=0.1, drop=0.1, lp=1.0, graph_enc='gtrans', train_file='data/agenda/train.json', valid_file='data/agenda/valid.json', test_file='data/agenda/test.json', save_dataset='data.pickle', save_model='saved_model.pt', gpu=0)
+    config = config_type(nhid=500, nhead=4, head_dim=125, weight_decay=0.0, prop=2, title=True, test=False, batch_size=32, beam_size=1, epoch=20, beam_max_len=200, enc_lstm_layers=2, seed=0, lr=1e-1, clip=1.0, emb_drop=0.0, attn_drop=0.1, drop=0.1, lp=1.0, graph_enc='gtrans', train_file='data/agenda/train.json', valid_file='data/agenda/valid.json', test_file='data/agenda/test.json', save_dataset='data.pickle', save_model='saved_model.pt', gpu=0, update_freq=2)
     config.dec_ninp = config.nhid * 3 if config.title else config.nhid * 2
     return config
 
@@ -284,10 +284,12 @@ class WebNLGExample(Example):
                              json_data['target'])
 
 class BucketSampler(torch.utils.data.Sampler):
-    def __init__(self, data_source, batch_size=32, bucket=3):
+    def __init__(self, data_source, batch_size=32, bucket=3, split=2): 
+        # split, split all batches by a given factor
         self.data_source = data_source
         self.bucket = bucket
         self.batch_size = batch_size
+        self.split = split
 
     def __iter__(self):
         # the magic number comes from the author's code
@@ -311,14 +313,14 @@ class BucketSampler(torch.utils.data.Sampler):
         for idx in idxs:
             batch.append(idx)
             mlen = max([0]+[lens[x] for x in batch])
-            if (mlen<100 and len(batch) == 32) or (mlen>100 and mlen<220 and len(batch) >= 24) or (mlen>220 and len(batch)>=8) or len(batch)==32:
+            if (mlen<100 and len(batch) == 32//self.split) or (mlen>100 and mlen<220 and len(batch) >= 24//self.split) or (mlen>220 and len(batch)>=8//self.split) or len(batch)==32//self.split:
                 yield batch
                 batch = []
         if len(batch) > 0:
             yield batch
 
     def __len__(self):
-        return (len(self.data_source)+self.batch_size-1)//self.batch_size
+        return (len(self.data_source)+self.batch_size-1)//self.batch_size * self.split
         
 
 class GWdataset(torch.utils.data.Dataset):
