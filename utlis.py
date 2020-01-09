@@ -5,10 +5,35 @@ import torch.utils.data
 import json
 import pickle
 import random
-
+from collections import namedtuple
+config_type = namedtuple('Config', ['nhid', 'nhead', 'head_dim', 'weight_decay', 'prop', 'title', 'test', 'batch_size', 'beam_size', 'epoch', 'beam_max_len', 'enc_lstm_layers', 'seed', 'lr', 'clip', 'emb_drop', 'attn_drop', 'drop', 'lp', 'graph_enc', 'train_file', 'valid_file', 'test_file', 'save_dataset', 'save_model', 'gpu'])
 NODE_TYPE = {'entity': 0, 'root': 1, 'relation':2}
 
-def write_txt(batch, seqs, w_file, args):
+def get_default_config():
+    config = config_type(nhid=500, nhead=4, head_dim=125, weight_decay=0.0, prop=2, title=True, test=False, batch_size=32, beam_size=1, epoch=20, beam_max_len=200, enc_lstm_layers=2, seed=0, lr=1e-1, clip=1.0, emb_drop=0.0, attn_drop=0.1, drop=0.1, lp=1.0, graph_enc='gtrans', train_file='data/agenda/train.json', valid_file='data/agenda/valid.json', test_file='data/agenda/test.json', save_dataset='data.pickle', save_model='saved_model.pt', gpu=0)
+    config.dec_ninp = config.nhid * 3 if config.title else config.nhid * 2
+    return config
+
+def write_txt(batch, seqs, text_vocab):
+    # converting the prediction to real text.
+    ret = []
+    for b, seq in enumerate(seqs):
+        txt = []
+        for token in seq:
+            # copy the entity
+            if token>=len(text_vocab):
+                ent_text = batch['raw_ent_text'][b][token-len(text_vocab)]
+                ent_text = filter(lambda x:x!='<PAD>', ent_text)
+                txt.extend(ent_text)
+            else:
+                if int(token) not in [text_vocab(x) for x in ['<PAD>', '<BOS>', '<EOS>']]:
+                    txt.append(text_vocab(int(token)))
+            if int(token) == text_vocab('<EOS>'):
+                break
+        ret.append([' '.join([str(x) for x in txt])])
+    return ret 
+
+def _write_txt(batch, seqs, w_file, args):
     # converting the prediction to real text.
     ret = []
     for b, seq in enumerate(seqs):
@@ -297,9 +322,16 @@ class BucketSampler(torch.utils.data.Sampler):
         
 
 class GWdataset(torch.utils.data.Dataset):
-    def __init__(self, exs, ent_vocab=None, rel_vocab=None, text_vocab=None, ent_text_vocab=None, title_vocab=None, device=None):
+    def __init__(self, exs, ent_vocab=None, rel_vocab=None, text_vocab=None, ent_text_vocab=None, title_vocab=None, device=None, vocab_pack=None):
         super(GWdataset, self).__init__()
         self.exs = exs
+        device = torch.device(device)
+        if vocab_pack is not None:
+            ent_vocab = vocab_pack['ent_vocab']
+            rel_vocab = vocab_pack['rel_vocab']
+            text_vocab = vocab_pack['text_vocab']
+            ent_text_vocab = vocab_pack['ent_text_vocab']
+            title_vocab = vocab_pack['title_vocab']
         self.ent_vocab, self.rel_vocab, self.text_vocab, self.ent_text_vocab, self.title_vocab, self.device = \
         ent_vocab, rel_vocab, text_vocab, ent_text_vocab, title_vocab, device
 
@@ -337,7 +369,47 @@ class GWdataset(torch.utils.data.Dataset):
         return {'title': batch_title.to(self.device), 'ent_text': batch_ent_text.to(self.device), 'ent_len': ent_len, \
             'ent_type': batch_ent_type.to(self.device), 'rel': batch_rel.to(self.device), 'text': batch_text.to(self.device), \
             'tgt_text': batch_tgt_text.to(self.device), 'graph': batch_graph, 'raw_ent_text': batch_raw_ent_text}
-        
+
+def get_one_dataset(fname, dataset_type, device, vocab_pack):
+    if dataset_type == 'webnlg':
+        example_class = WebNLGExample
+    if dataset_type == 'agenda':
+        example_class = AgendaExample
+    exs = []
+    json_datas = json.loads(open(fname).read())
+    for json_data in json_datas:
+        # construct one data example
+        ex = example_class.from_json(json_data)
+        exs.append(ex)
+    return GWdataset(exs, vocab_pack=vocab_pack, device=device)
+
+def get_vocab(fnames, no_save=True, min_freq=5, save='vocab.pickle'):
+    ent_vocab = Vocab(sp=['<PAD>', '<UNK>']) 
+    title_vocab = Vocab(min_freq=min_freq) 
+    rel_vocab = Vocab(sp=['<PAD>', '<UNK>'])
+    text_vocab = Vocab(min_freq=min_freq)
+    ent_text_vocab = Vocab(sp=['<PAD>', '<UNK>'])
+    if 'webnlg' in fnames[0]:
+        example_class = WebNLGExample
+    else:
+        example_class = AgendaExample
+    for fname in fnames:
+        json_datas = json.loads(open(fname).read())
+        for json_data in json_datas:
+            # construct one data example
+            ex = example_class.from_json(json_data)
+            ex.update_vocab(ent_vocab, rel_vocab, text_vocab, ent_text_vocab, title_vocab)
+    ent_vocab.build()
+    rel_vocab.build()
+    text_vocab.build()
+    ent_text_vocab.build()
+    title_vocab.build()
+    vocab_pack = {'ent_vocab': ent_vocab, 'rel_vocab': rel_vocab, 'text_vocab': text_vocab, 'ent_text_vocab': ent_text_vocab, 'title_vocab': title_vocab}
+    if not no_save:
+        with open(save, 'wb') as f:
+            pickle.dump(vocab_pack, f)
+    return vocab_pack
+
 def get_datasets(fnames, min_freq=-1, sep=';', joint_vocab=True, device=None, save='tmp.pickle'):
     # min_freq : not support now since it's very sensitive to the final results, but you can set it via passing min_freq to the Vocab class.
     # sep : not support now
