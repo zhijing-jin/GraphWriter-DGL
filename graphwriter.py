@@ -5,8 +5,16 @@ from torch import nn
 import dgl
             
 class GraphWriter(nn.Module):
-    def __init__(self, args):
+    def __init__(self, args, vocab_pack=None):
         super(GraphWriter, self).__init__()
+        args.device = torch.device(args.device)
+        if vocab_pack is not None:
+            args.ent_vocab = vocab_pack['ent_vocab']
+            args.rel_vocab = vocab_pack['rel_vocab']
+            args.text_vocab = vocab_pack['text_vocab']
+            args.ent_text_vocab = vocab_pack['ent_text_vocab']
+            args.title_vocab = vocab_pack['title_vocab']
+
         self.args = args
         if args.title:
             self.title_emb = nn.Embedding(len(args.title_vocab), args.nhid, padding_idx=0)

@@ -21,14 +21,16 @@ def train_one_epoch(model, dataloader, optimizer, args, epoch):
     tcnt = 0.
     st_time = time.time()
     with tqdm(dataloader, desc='Train Ep '+str(epoch), mininterval=60) as tq:
-        for batch in tq:
+        optimizer.zero_grad()
+        for i, batch in enumerate(tq):
             pred = model(batch)
             nll_loss = F.nll_loss(pred.view(-1, pred.shape[-1]), batch['tgt_text'].view(-1), ignore_index=0)
             loss = nll_loss
-            optimizer.zero_grad()
-            loss.backward()
+            (loss*1.0/args.update_freq).backward()
             nn.utils.clip_grad_norm_(model.parameters(), args.clip)
-            optimizer.step()
+            if i%args.update_freq==0:
+                optimizer.step()
+                optimizer.zero_grad()
             loss = loss.item()
             if loss!=loss:
                 raise ValueError('NaN appear')
